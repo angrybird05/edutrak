@@ -1,6 +1,3 @@
-# ── Frontend (separate repo) ──────────────────────────────────────────────────
-web_frontend/
-
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -38,9 +35,11 @@ logs/
 
 # ── Node / Frontend ───────────────────────────────────────────────────────────
 node_modules/
+web_frontend/node_modules/
 web_frontend/dist/
 web_frontend/.vite/
 web_frontend/build/
+web_frontend/vite.config.ts.timestamp-*.mjs
 .npm/
 .pnpm-store/
 
