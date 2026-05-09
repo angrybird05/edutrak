@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-p no:cacheprovider"
+filterwarnings = [
+    "ignore:'asyncio.get_event_loop_policy' is deprecated.*:DeprecationWarning:pytest_asyncio.plugin",
+    "ignore:'asyncio.set_event_loop_policy' is deprecated.*:DeprecationWarning:pytest_asyncio.plugin",
+]

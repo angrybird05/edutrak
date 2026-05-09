@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # =========================================================
+  # 1. API Gateway (Nginx)
+  # =========================================================
+  gateway:
+    build: 
+      context: ./backend/nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: always
+    networks:
+      - edutrack_net
+
+  # =========================================================
+  # 2. Main API Service (FastAPI Modular Monolith)
+  # =========================================================
+  api:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    expose:
+      - "8000" # Not exposed to host, only to Nginx
+    env_file:
+      - ./backend/.env
+    environment:
+      SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://u_edutrack:${POSTGRES_PASSWORD:-p_edutrack_secure}@db:5432/db_edutrack
+      POSTGRES_SERVER: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: u_edutrack
+      POSTGRES_DB: db_edutrack
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND_URL: redis://redis:6379/1
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+    # Scaling to 2 replicas for horizontal scale test
+    deploy:
+      replicas: 2
+    restart: always
+    networks:
+      - edutrack_net
+
+  # =========================================================
+  # 3. Background Task Worker (Celery)
+  # =========================================================
+  celery_worker:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      SQLALCHEMY_DATABASE_URI: postgresql+asyncpg://u_edutrack:${POSTGRES_PASSWORD:-p_edutrack_secure}@db:5432/db_edutrack
+      POSTGRES_SERVER: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: u_edutrack
+      POSTGRES_DB: db_edutrack
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND_URL: redis://redis:6379/1
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+      - db
+    command: celery -A app.core.celery_app worker --loglevel=info -Q ai_insights_v2_dispatch,ai_insights_v2,ai_insights,celery
+    restart: always
+    networks:
+      - edutrack_net
+
+  # =========================================================
+  # 4. Shared Infrastructure
+  # =========================================================
+  db:
+    image: postgres:15-alpine
+    user: postgres
+    environment:
+      POSTGRES_USER: u_edutrack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-p_edutrack_secure}
+      POSTGRES_DB: db_edutrack
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U u_edutrack -d db_edutrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edutrack_net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - edutrack_net
+
+  # =========================================================
+  # 5. Local AI Engine (Ollama)
+  # =========================================================
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - edutrack_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_models:
+
+networks:
+  edutrack_net:
+    driver: bridge
